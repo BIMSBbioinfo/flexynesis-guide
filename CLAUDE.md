@@ -16,13 +16,10 @@ At every step: run the commands, inspect the output, summarise what you found in
 
 ### Step 1 — Install flexynesis
 
-Check whether flexynesis is already installed:
+**Do not check automatically.** Ask the user: *"Do you already have flexynesis installed in a mamba or conda environment?"*
 
-```bash
-python -c "import flexynesis; print(flexynesis.__version__)"
-```
-
-If not installed, create a clean environment and install:
+- If yes: ask for the environment name and activate it before proceeding.
+- If no: create a clean environment and install:
 
 ```bash
 mamba create --name flexynesisenv python==3.11 -y
