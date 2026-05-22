@@ -4,8 +4,7 @@ This repository contains a single `CLAUDE.md` file. When you open it with [Claud
 
 **You only need:**
 - [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) (or conda / pip)
-- Claude Code CLI
-- An Anthropic API key (free tier available)
+- Claude Code CLI (free tier available)
 
 Claude installs flexynesis, downloads a dataset, trains the model, and produces plots — all from a conversation.
 
@@ -15,28 +14,22 @@ Claude installs flexynesis, downloads a dataset, trains the model, and produces 
 
 **1. Install Claude Code**
 
-```bash
-npm install -g @anthropic/claude-code
-```
-
-Requires Node.js ≥ 18. Install Node from https://nodejs.org if needed.
-
-**2. Get an Anthropic API key**
-
-Sign up at https://console.anthropic.com and create an API key. Then set it:
+See https://code.claude.com/docs/en/terminal-guide
 
 ```bash
-export ANTHROPIC_API_KEY=your_key_here
+curl -fsSL https://claude.ai/install.sh | bash
 ```
 
-Add that line to your `~/.bashrc` or `~/.zshrc` to make it permanent.
+**2. Authorise Claude Code**
+
+After installation, run `claude` and follow the browser-based login prompt to authorise your account.
 
 **3. Clone this repository and start Claude**
 
 ```bash
 git clone https://github.com/BIMSBbioinfo/flexynesis-claude.git
 cd flexynesis-claude
-claude "let's get started with flexynesis"
+claude "let's get started with Flexynesis!"
 ```
 
 Claude reads `CLAUDE.md` and immediately begins the guided session.
