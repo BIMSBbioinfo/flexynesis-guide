@@ -62,6 +62,8 @@ Download one of these ready-to-use datasets. All are hosted at `https://bimsbsta
 | `brca_metabric` | Breast cancer (METABRIC) | `gex`, `cna` | ~1390 / 595 | Classification, survival, regression |
 | `singlecell_bonemarrow` | Bone marrow single-cell RNA | `gex` | ~7500 / 2500 | Classification, unsupervised |
 
+**Note on single-cell data:** flexynesis was designed for bulk multi-omics data (patient cohorts, cell lines) — not single-cell RNA-seq. It has no built-in handling for the sparsity, scale, or batch structure typical of scRNA-seq. The `singlecell_bonemarrow` dataset is included as a benchmark curiosity and works well for **supervised cell type classification** (where cell type labels are available), but flexynesis is not the right tool for unsupervised single-cell analysis, trajectory inference, or integration of large scRNA-seq atlases. For those tasks, use Scanpy/Seurat/scVI instead. If the user's question is specifically about supervised classification of single-cell data with known labels, it is worth trying.
+
 Download and extract:
 
 ```bash
