@@ -36,10 +36,10 @@ Add that line to your `~/.bashrc` or `~/.zshrc` to make it permanent.
 ```bash
 git clone https://github.com/BIMSBbioinfo/flexynesis-claude.git
 cd flexynesis-claude
-claude
+claude "let's get started with flexynesis"
 ```
 
-Claude reads `CLAUDE.md` on startup and begins the guided session immediately.
+Claude reads `CLAUDE.md` and immediately begins the guided session.
 
 ---
 
