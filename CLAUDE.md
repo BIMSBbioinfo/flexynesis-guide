@@ -113,31 +113,185 @@ print("Data saved to:", STUDY_ID)
 
 ---
 
-### Step 3 — Inspect Clinical Variables and Choose Tasks
+### Step 3 — EDA: Modality Coverage and Clinical Variable Quality
 
-After downloading, inspect what can be predicted:
+Before suggesting any model, run a full EDA. Most users skip this and end up training on useless targets — don't let that happen. Do this automatically without asking the user first.
+
+#### 3a — Inventory the data modalities and sample overlap
 
 ```python
-import pandas as pd
-clin = pd.read_csv('<dataset>/train/clin.csv', index_col=0)
-print("Shape:", clin.shape)
-print(clin.dtypes)
-print(clin.describe())
-for col in clin.select_dtypes('object').columns:
-    print(f"\n{col}:", clin[col].value_counts().head(8).to_dict())
+import os, pandas as pd
+from functools import reduce
+
+DATASET = '<dataset_key>'
+SPLIT = 'train'
+data_dir = f'{DATASET}/{SPLIT}'
+
+# List all modality files (everything except clin.csv)
+mod_files = sorted([f for f in os.listdir(data_dir) if f.endswith('.csv') and f != 'clin.csv'])
+print(f"Modality files found: {[f.replace('.csv','') for f in mod_files]}")
+
+# Load clinical — index is the sample ID
+clin = pd.read_csv(f'{data_dir}/clin.csv', index_col=0)
+print(f"\nClinical: {clin.shape[0]} samples × {clin.shape[1]} variables")
+clin_samples = set(clin.index)
+
+# Load each modality — flexynesis format: rows=features, columns=samples
+modality_samples = {}
+for f in mod_files:
+    key = f.replace('.csv', '')
+    df = pd.read_csv(f'{data_dir}/{f}', index_col=0)
+    # detect orientation: samples are whichever axis overlaps more with clin index
+    col_overlap = len(set(df.columns) & clin_samples)
+    row_overlap = len(set(df.index) & clin_samples)
+    if col_overlap >= row_overlap:
+        samples = set(df.columns)
+        n_feat = df.shape[0]
+    else:
+        samples = set(df.index)
+        n_feat = df.shape[1]
+    in_clin = len(samples & clin_samples)
+    modality_samples[key] = samples
+    print(f"  {key}: {n_feat} features, {len(samples)} samples total, {in_clin} overlap with clin")
+
+# Common samples across ALL modalities + clin
+all_sets = [clin_samples] + list(modality_samples.values())
+common = reduce(lambda a, b: a & b, all_sets)
+print(f"\nSamples present in ALL modalities + clin: {len(common)}")
+
+# Pairwise overlaps
+keys = list(modality_samples.keys())
+print("\nPairwise sample overlaps (with clin):")
+for k in keys:
+    n = len(modality_samples[k] & clin_samples)
+    print(f"  clin ∩ {k}: {n}")
+if len(keys) >= 2:
+    for i in range(len(keys)):
+        for j in range(i+1, len(keys)):
+            n = len(modality_samples[keys[i]] & modality_samples[keys[j]] & clin_samples)
+            print(f"  clin ∩ {keys[i]} ∩ {keys[j]}: {n}")
 ```
 
-Map each column to a task using this logic:
+Summarise the output in plain language: which modalities are available, how many samples are covered by each, and how many are shared across all of them. Tell the user which `--data_types` argument makes sense (e.g., only use modalities with ≥ 80% sample overlap with clin).
 
-| Variable type | Example columns | Task | CLI flag |
+#### 3b — Score clinical variables for modeling suitability
+
+Run this after the modality inventory. Automatically classify each variable and give it a recommendation.
+
+```python
+import pandas as pd, numpy as np
+
+DATASET = '<dataset_key>'
+clin = pd.read_csv(f'{DATASET}/train/clin.csv', index_col=0)
+n = len(clin)
+
+recommendations = []
+
+# Detect potential survival pairs first
+time_keywords  = ['MONTHS', 'DAYS', 'YEARS', 'TIME', 'DURATION', 'SURVIVAL']
+event_keywords = ['STATUS', 'EVENT', 'CENSORED', 'OS', 'DFS', 'PFS', 'DSS']
+
+status_cols = [c for c in clin.columns
+               if any(k in c.upper() for k in event_keywords)
+               and clin[c].dropna().isin([0, 1, 0.0, 1.0]).all()]
+time_cols   = [c for c in clin.columns
+               if any(k in c.upper() for k in time_keywords)
+               and pd.api.types.is_numeric_dtype(clin[c])]
+
+survival_pairs = []
+for sc in status_cols:
+    prefix = sc.split('_')[0]  # e.g. "OS" from "OS_STATUS"
+    matches = [tc for tc in time_cols if tc.startswith(prefix)]
+    if matches:
+        tc = matches[0]
+        event_rate = clin[sc].mean()
+        n_valid = clin[[sc, tc]].dropna().__len__()
+        usable = n_valid >= 50 and 0.05 <= event_rate <= 0.95
+        note = "GOOD" if usable else (
+            "TOO FEW EVENTS" if event_rate < 0.05 else
+            "ALMOST ALL EVENTS" if event_rate > 0.95 else "TOO FEW SAMPLES")
+        survival_pairs.append((sc, tc))
+        recommendations.append({
+            'variable': f'{sc} + {tc}',
+            'task': 'survival',
+            'cli_flag': f'--surv_event_var {sc} --surv_time_var {tc}',
+            'detail': f'{n_valid} samples, event rate {event_rate:.0%}',
+            'recommendation': note
+        })
+
+# Categorical variables
+survival_related = {c for pair in survival_pairs for c in pair}
+for col in clin.columns:
+    if col in survival_related:
+        continue
+    s = clin[col].dropna()
+    n_valid = len(s)
+    if n_valid < 30:
+        continue
+
+    if pd.api.types.is_object_dtype(s) or (pd.api.types.is_integer_dtype(s) and s.nunique() <= 10):
+        counts = s.value_counts()
+        n_classes = len(counts)
+        top_pct = counts.iloc[0] / n_valid
+        min_class_n = counts.iloc[-1]
+
+        if n_classes < 2 or n_classes > 20:
+            note = "SKIP — too few or too many classes"
+        elif top_pct > 0.92:
+            note = f"SKIP — {counts.index[0]!r} dominates ({top_pct:.0%}); model would just predict majority class"
+        elif min_class_n < 15:
+            note = f"WEAK — smallest class has only {min_class_n} samples"
+        else:
+            note = "GOOD"
+
+        dist = ", ".join(f"{k}: {v}" for k, v in counts.head(5).items())
+        recommendations.append({
+            'variable': col,
+            'task': 'classification',
+            'cli_flag': f'--target_variables {col}',
+            'detail': f'{n_valid} samples, {n_classes} classes ({dist})',
+            'recommendation': note
+        })
+
+    elif pd.api.types.is_numeric_dtype(s):
+        na_pct = 1 - n_valid / n
+        cv = s.std() / s.mean() if s.mean() != 0 else 0
+        if na_pct > 0.5:
+            note = "SKIP — >50% missing"
+        elif abs(cv) < 0.05:
+            note = "SKIP — near-zero variance"
+        elif n_valid < 50:
+            note = "WEAK — fewer than 50 non-NA values"
+        else:
+            note = "GOOD"
+        recommendations.append({
+            'variable': col,
+            'task': 'regression',
+            'cli_flag': f'--target_variables {col}',
+            'detail': f'{n_valid} samples, range [{s.min():.1f}, {s.max():.1f}], mean {s.mean():.1f}',
+            'recommendation': note
+        })
+
+df_rec = pd.DataFrame(recommendations)
+print(df_rec[['variable', 'task', 'detail', 'recommendation']].to_string(index=False))
+```
+
+After running this, present the output as a clean table and explicitly tell the user:
+- Which variables are **recommended** (mark GOOD ones)
+- Which are **skipped** and exactly why (e.g., "SEX is 85% Female in this breast cancer dataset — a model would just predict Female and achieve high accuracy without learning anything")
+- What the **single best starting task** is — choose the one GOOD variable with the richest class balance or highest biological interpretability
+
+**Do not suggest multi-task as the first option for a new user.** Start with one well-chosen variable. Offer multi-task only after the baseline works.
+
+#### Variable type → task mapping reference
+
+| Variable type | Example | Task | CLI flag |
 |---|---|---|---|
-| Continuous float | `AGE`, `KARNOFSKY_PERFORMANCE_SCORE`, drug IC50 | Regression | `--target_variables COL` |
-| Categorical (object, few unique values) | `HISTOLOGICAL_DIAGNOSIS`, `CLAUDIN_SUBTYPE` | Classification | `--target_variables COL` |
-| Binary int (0/1) | `CHEMOTHERAPY`, `SEX` as 0/1 | Classification | `--target_variables COL` |
-| Paired event + time columns | `OS_STATUS` + `OS_MONTHS`, `DFS_STATUS` + `DFS_MONTHS` | Survival (Cox PH) | `--surv_event_var OS_STATUS --surv_time_var OS_MONTHS` |
-| Multiple variables mixed | any of the above combined | Multi-task | combine all relevant flags |
-
-Suggest the richest task setup the data supports. Multi-task training (mixing regression + classification + survival) is a key strength of flexynesis — the model learns shared representations and balances losses automatically.
+| Categorical, 2–10 balanced classes | `HISTOLOGICAL_DIAGNOSIS`, `CLAUDIN_SUBTYPE` | Classification | `--target_variables COL` |
+| Continuous float with spread | `AGE`, `KARNOFSKY_PERFORMANCE_SCORE`, drug IC50 | Regression | `--target_variables COL` |
+| Binary 0/1 with balanced events | `CHEMOTHERAPY` | Classification | `--target_variables COL` |
+| Paired event + time | `OS_STATUS` + `OS_MONTHS` | Survival (Cox PH) | `--surv_event_var OS_STATUS --surv_time_var OS_MONTHS` |
+| Multiple GOOD variables | any of the above combined | Multi-task | combine all relevant flags — suggest only after a single-task baseline works |
 
 ---
 
@@ -161,24 +315,40 @@ Fusion strategy:
 
 ### Step 5 — Run Training
 
-Construct and run the command. Here are complete, ready-to-run examples:
+Always start with a single well-chosen target variable. Confirm it works and makes biological sense before adding more targets.
 
-#### Quick smoke test (~1 minute on CPU):
+#### Step 5a — Smoke test first (~1–2 min on CPU, hpo_iter=1)
 
+Run this before any full training to confirm the pipeline works end-to-end:
+
+```bash
+flexynesis \
+  --data_path <dataset> \
+  --model_class DirectPred \
+  --target_variables <BEST_VARIABLE_FROM_EDA> \
+  --data_types <available_modalities> \
+  --hpo_iter 1 \
+  --features_top_percentile 5 \
+  --outdir results \
+  --prefix smoke_test
+```
+
+#### Step 5b — Single-task training examples (start here)
+
+**Classification — tumor subtype:**
 ```bash
 flexynesis \
   --data_path lgggbm_tcga_pub_processed \
   --model_class DirectPred \
   --target_variables HISTOLOGICAL_DIAGNOSIS \
   --data_types mut,cna \
-  --hpo_iter 1 \
-  --features_top_percentile 5 \
+  --hpo_iter 20 \
+  --features_top_percentile 10 \
   --outdir results \
-  --prefix lgg_quick
+  --prefix lgg_subtype
 ```
 
-#### Survival analysis (LGG/GBM):
-
+**Survival analysis:**
 ```bash
 flexynesis \
   --data_path lgggbm_tcga_pub_processed \
@@ -192,13 +362,55 @@ flexynesis \
   --prefix lgg_survival
 ```
 
-#### Multi-task: classification + survival + regression together:
+**Drug response regression (single drug first):**
+```bash
+flexynesis \
+  --data_path dataset1 \
+  --model_class DirectPred \
+  --target_variables Erlotinib \
+  --data_types gex,cnv \
+  --hpo_iter 20 \
+  --features_top_percentile 10 \
+  --log_transform True \
+  --outdir results \
+  --prefix erlotinib_response
+```
 
+**Binary classification (MSI):**
+```bash
+flexynesis \
+  --data_path dataset2 \
+  --model_class DirectPred \
+  --target_variables y \
+  --data_types gex,meth \
+  --hpo_iter 20 \
+  --features_top_percentile 10 \
+  --outdir results \
+  --prefix msi_classification
+```
+
+**Cell type classification (single-cell):**
+```bash
+flexynesis \
+  --data_path singlecell_bonemarrow \
+  --model_class supervised_vae \
+  --data_types gex \
+  --hpo_iter 5 \
+  --features_top_percentile 10 \
+  --outdir results \
+  --prefix bonemarrow_celltypes
+```
+
+#### Step 5c — Multi-task training (only after single-task baseline works)
+
+Multi-task is a key strength of flexynesis — the model learns shared representations and balances losses automatically. Suggest it **only** after the user has seen a working single-task result and wants to explore further.
+
+**Classification + survival:**
 ```bash
 flexynesis \
   --data_path lgggbm_tcga_pub_processed \
   --model_class DirectPred \
-  --target_variables HISTOLOGICAL_DIAGNOSIS,KARNOFSKY_PERFORMANCE_SCORE \
+  --target_variables HISTOLOGICAL_DIAGNOSIS \
   --surv_event_var OS_STATUS \
   --surv_time_var OS_MONTHS \
   --data_types mut,cna \
@@ -208,23 +420,7 @@ flexynesis \
   --prefix lgg_multitask
 ```
 
-#### Drug response regression (cell lines):
-
-```bash
-flexynesis \
-  --data_path dataset1 \
-  --model_class DirectPred \
-  --target_variables Erlotinib,Crizotinib \
-  --data_types gex,cnv \
-  --hpo_iter 20 \
-  --features_top_percentile 10 \
-  --log_transform True \
-  --outdir results \
-  --prefix drug_response
-```
-
-#### Breast cancer subtypes (multi-task):
-
+**Multi-task with regression (breast cancer):**
 ```bash
 flexynesis \
   --data_path brca_metabric \
@@ -234,34 +430,7 @@ flexynesis \
   --hpo_iter 20 \
   --features_top_percentile 10 \
   --outdir results \
-  --prefix brca_subtypes
-```
-
-#### MSI classification with triplet loss:
-
-```bash
-flexynesis \
-  --data_path dataset2 \
-  --model_class MultiTripletNetwork \
-  --target_variables y \
-  --data_types gex,meth \
-  --hpo_iter 20 \
-  --features_top_percentile 10 \
-  --outdir results \
-  --prefix msi_triplet
-```
-
-#### Unsupervised embedding of single-cell data:
-
-```bash
-flexynesis \
-  --data_path singlecell_bonemarrow \
-  --model_class supervised_vae \
-  --data_types gex \
-  --hpo_iter 5 \
-  --features_top_percentile 10 \
-  --outdir results \
-  --prefix bonemarrow_unsupervised
+  --prefix brca_multitask
 ```
 
 **Useful flags:**
@@ -321,20 +490,26 @@ print("Saved pca_embeddings.png")
 
 #### Top markers (feature importance)
 
+The importance file is long-format: columns are `target_class`, `target_class_label`, `layer`, `name`, `importance`, `explainer`; the index is the target variable name.
+
 ```python
-import pandas as pd, matplotlib.pyplot as plt
+import pandas as pd, matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 prefix = 'results/<prefix>'
 imp = pd.read_csv(f'{prefix}.feature_importance.IntegratedGradients.csv', index_col=0)
 
-for var in imp.columns:
-    top = imp[var].abs().nlargest(20).sort_values()
+for var in imp.index.unique():
+    df = imp.loc[var]
+    # Average absolute importance across classes per gene
+    top = df.groupby('name')['importance'].apply(lambda x: x.abs().mean()).nlargest(20).sort_values()
     fig, ax = plt.subplots(figsize=(6, 6))
     top.plot.barh(ax=ax, color='steelblue')
-    ax.set_title(f'Top markers — {var}')
-    ax.set_xlabel('Integrated Gradient score')
+    ax.set_title(f'Top 20 markers — {var}')
+    ax.set_xlabel('Mean |Integrated Gradient| score')
     plt.tight_layout()
-    fname = f'top_markers_{var}.png'
+    fname = f'top_markers_{var.replace("/","_")}.png'
     plt.savefig(fname, dpi=150)
     print(f"Saved {fname}")
 ```
@@ -375,12 +550,13 @@ print("Saved kaplan_meier.png")
 
 ### Step 7 — What Next?
 
-After showing the results, offer these options:
+After showing the results, offer these options in order — simpler ones first:
 
-- **Try another model**: swap `--model_class` to `supervised_vae`, `MultiTripletNetwork`, or `GNN`
-- **More HPO**: increase `--hpo_iter` for better performance
+- **More HPO**: increase `--hpo_iter` to 50–100 for better hyperparameter tuning on the same single task
+- **Add baselines**: append `--evaluate_baseline_performance` to compare DirectPred against RF/SVM/XGBoost/RSF
+- **Try another model**: swap `--model_class` to `supervised_vae` or `MultiTripletNetwork` for richer embeddings or better cluster separation
+- **Add a second task (multi-task)**: only after the single-task baseline looks good — combine with a second well-scoring variable from the EDA
 - **Different dataset**: fetch a different cBioPortal study
-- **Add baselines**: append `--evaluate_baseline_performance` to compare with RF/SVM/XGBoost
 - **Inference on new data**: apply the trained model without retraining:
 
 ```bash
