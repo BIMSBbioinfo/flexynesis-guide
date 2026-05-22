@@ -41,15 +41,17 @@ Ask the user: *"What kind of biological question are you interested in?"* Map th
 
 #### Option A — Use a pre-processed benchmark dataset (fastest, recommended for first run)
 
+These datasets were used in the flexynesis publication (Uyar et al., *Nature Communications* 2025) and are fully curated: sample IDs are consistent across modalities, clinical labels are clean and matched, and train/test splits are already defined. **They are ready to train on with no additional preprocessing.** This is the safest starting point for a first run.
+
 Download one of these ready-to-use datasets. All are hosted at `https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis-benchmark-datasets/`.
 
-| Dataset key | Biology | Modalities | Samples | What you can predict |
+| Dataset key | Biology | Modalities | Samples | Task types available |
 |---|---|---|---|---|
-| `dataset1` | Cancer drug response (CCLE/GDSC cell lines) | `gex`, `cnv` | ~950 / 240 | Erlotinib, Crizotinib, Lapatinib, Palbociclib and 4 more — **regression** |
-| `dataset2` | Microsatellite instability (MSI) | `gex`, `meth` | ~380 / 95 | MSI-H vs MSS — **binary classification** |
-| `lgggbm_tcga_pub_processed` | Brain tumours: LGG + GBM (TCGA) | `mut`, `cna` | 556 / 238 | Tumour type, survival, performance score — **classification + survival + regression** |
-| `brca_metabric` | Breast cancer (METABRIC) | `gex`, `cna` | ~1390 / 595 | Molecular subtype, chemotherapy response, survival — **multi-task** |
-| `singlecell_bonemarrow` | Bone marrow single-cell RNA | `gex` | ~7500 / 2500 | Cell type labels — **classification / unsupervised** |
+| `dataset1` | Cancer drug response (CCLE/GDSC cell lines) | `gex`, `cnv` | ~950 / 240 | Regression (drug IC50 per compound) |
+| `dataset2` | Microsatellite instability (MSI) | `gex`, `meth` | ~380 / 95 | Binary classification (MSI-H vs MSS) |
+| `lgggbm_tcga_pub_processed` | Brain tumours: LGG + GBM (TCGA) | `mut`, `cna` | 556 / 238 | Classification, survival, regression |
+| `brca_metabric` | Breast cancer (METABRIC) | `gex`, `cna` | ~1390 / 595 | Classification, survival, regression |
+| `singlecell_bonemarrow` | Bone marrow single-cell RNA | `gex` | ~7500 / 2500 | Classification, unsupervised |
 
 Download and extract:
 
@@ -60,6 +62,8 @@ tar -xzvf <key>.tgz
 ```
 
 #### Option B — Fetch any study from cBioPortal
+
+**Important:** Any custom dataset — whether from cBioPortal or elsewhere — requires some preparation before it is ready to train. flexynesis handles label encoding and much of the internal data cleanup automatically. However, the one thing you must ensure manually is that **sample IDs are consistent across all omics CSV files and `clin.csv`** — mismatched IDs will silently drop samples or cause errors. Additionally, if a clinical variable has rare labels with very few samples, consider combining them into an `"Other"` category before training; flexynesis won't do this automatically. Walk through these issues as they arise — do not assume the raw download is usable. This path is more involved than Option A; only recommend it if the user has a specific question that the benchmark datasets don't cover.
 
 If the user wants a different cancer type, help them pick a study from https://www.cbioportal.org.
 Well-curated studies with rich multi-omic data:
@@ -280,6 +284,8 @@ After running this, present the output as a clean table and explicitly tell the 
 - Which variables are **recommended** (mark GOOD ones)
 - Which are **skipped** and exactly why (e.g., "SEX is 85% Female in this breast cancer dataset — a model would just predict Female and achieve high accuracy without learning anything")
 - What the **single best starting task** is — choose the one GOOD variable with the richest class balance or highest biological interpretability
+
+Do **not** cite expected performance numbers or benchmarks when recommending a variable. Let the actual results speak.
 
 **Do not suggest multi-task as the first option for a new user.** Start with one well-chosen variable. Offer multi-task only after the baseline works.
 
