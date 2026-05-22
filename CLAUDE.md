@@ -115,6 +115,21 @@ cbio.print_dataset(dat_split, STUDY_ID)   # writes STUDY_ID/train/ and STUDY_ID/
 print("Data saved to:", STUDY_ID)
 ```
 
+**Handling missing labels (NaN / NA / Not Available / Unknown):**
+Samples with missing values in a target variable are tolerated by flexynesis — they are ignored in loss computations during training. However, a known bug in `get_predicted_labels` causes a `KeyError: -1` crash when any sample in the **test set** has a missing target label, because the internal `-1` sentinel is not present in `label_mappings`.
+
+Workaround: before calling `split_data`, fill NaN in all target columns with the string `"unknown"`:
+
+```python
+for col in TARGET_COLUMNS:
+    clin[col] = clin[col].fillna('unknown')
+cbio.data['clin'] = clin
+```
+
+Do **not** drop those samples — just label them `"unknown"`. flexynesis will include them in training as an ignored class. This applies to any column used as `--target_variables`, `--surv_event_var`, or `--surv_time_var`.
+
+**Important:** Do not use `"NA"` as the fill value — pandas treats `"NA"` as NaN by default when reading CSVs, so the value would silently revert to NaN and cause the same crash. Use `"unknown"` or another string not in pandas' default null list.
+
 ---
 
 ### Step 3 — EDA: Modality Coverage and Clinical Variable Quality
@@ -176,7 +191,15 @@ if len(keys) >= 2:
             print(f"  clin ∩ {keys[i]} ∩ {keys[j]}: {n}")
 ```
 
-Summarise the output in plain language: which modalities are available, how many samples are covered by each, and how many are shared across all of them. Tell the user which `--data_types` argument makes sense (e.g., only use modalities with ≥ 80% sample overlap with clin).
+Summarise the output in plain language: which modalities are available, how many samples are covered by each, and how many are shared across all of them.
+
+**After the modality inventory, ask the user which data types to use for training.** Present the options clearly with a recommendation:
+- Recommend modalities with ≥ 80% sample overlap with clin as safe to include.
+- Flag any modality with < 80% overlap as risky (samples will be dropped).
+- Recommend combining all well-overlapping modalities as the default, but give the user the final choice.
+- Format the ask like: *"We have mut (N samples), cna (N samples), gex (N samples). All overlap well with clinical. I recommend using all three (`--data_types mut,cna,gex`). Would you like to use all three, or a subset?"*
+
+Do not assume `--data_types` — always confirm with the user before proceeding to training.
 
 #### 3b — Score clinical variables for modeling suitability
 
@@ -360,6 +383,8 @@ Only after this explanation, ask the user if they want to proceed with the full 
 #### Step 5c — Full training run (after the user agrees)
 
 Use `--hpo_iter 100 --hpo_patience 30` for the real run. The `--hpo_patience` flag stops early if the Bayesian optimiser stops improving, so in practice it often finishes faster than 100 iterations.
+
+**Feature selection for full runs:** Use `--features_top_percentile 20` (top 20% by Laplacian score) with `--features_min 1000` to ensure at least 1000 features per modality are retained. The smoke test uses 5% to keep it fast; the full run benefits from a broader feature set. Adjust downward (e.g. 10%) for very large datasets (>50k features per modality) if memory or runtime is a concern.
 
 **Classification — tumor subtype:**
 ```bash
@@ -582,6 +607,18 @@ print("Saved kaplan_meier.png")
 ---
 
 ### Step 7 — What Next?
+
+After showing the results, **always ask the user** whether they would like a notebook report of the session:
+
+> "Would you like me to save a Jupyter notebook summarising what we did? It will include the key flexynesis commands, the output stats, and the plots — with short text notes at each step so you can re-run or share it."
+
+If yes, write a `.ipynb` file containing:
+- A markdown cell introducing the dataset and task
+- Code cells for each step actually executed: data download + prep, smoke test command, full training command (if run), and all visualisation code
+- Short markdown cells between steps explaining what each step does and what the output means
+- The actual metric values from `stats.csv` summarised in a markdown cell
+
+Only include the flexynesis CLI commands and result-reading code — not the EDA exploration or debugging code from the interactive session. Keep it clean enough for the user to hand to a colleague.
 
 After showing the results, offer these options in order — simpler ones first:
 
