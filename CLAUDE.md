@@ -339,7 +339,27 @@ flexynesis \
   --prefix smoke_test
 ```
 
-#### Step 5b — Single-task training examples (start here)
+#### Step 5b — Walk through the smoke test outputs before full training
+
+**Do not immediately launch a longer training run after the smoke test.** Instead, use the smoke test results to show the user what flexynesis produces and what the outputs mean. This builds understanding and confirms the run made sense before investing more time.
+
+Produce all plots that are relevant to the task (see Step 6 for the code). For survival tasks, generate all three: performance metrics, PCA of embeddings, top markers, and the Kaplan-Meier curve. For classification, generate metrics, PCA, and top markers. For regression, generate metrics and top markers.
+
+Explain each output file in plain language as you show it:
+- `stats.csv` — the headline metric (C-index for survival, AUROC for classification, Pearson r for regression). Explain what the number means and whether it looks reasonable for a 1-iteration smoke test.
+- `embeddings_test.csv` — the model's learned representation of each sample in latent space; PCA reveals whether the model is separating biologically meaningful groups even without being explicitly trained to do so.
+- `feature_importance.IntegratedGradients.csv` — which genes drove predictions; cross-referencing against known biology (e.g. IDH1 for glioma survival) is a sanity check that the model is learning real signal and not noise.
+- `predicted_labels.csv` — the actual predictions on the test set; for survival, splitting by median risk score into a Kaplan-Meier plot shows whether the model meaningfully stratifies patients.
+
+After walking through all outputs, tell the user explicitly:
+
+> "This smoke test used only 1 HPO iteration — it found a single hyperparameter configuration essentially at random. The result is a lower bound on what the model can do. To get the best performance, we need to run Bayesian hyperparameter optimisation properly. I recommend `--hpo_iter 100` with `--hpo_patience 30` (stop early if no improvement for 30 steps). This will take longer — typically 20–60 minutes on CPU depending on dataset size — but will find a substantially better configuration."
+
+Only after this explanation, ask the user if they want to proceed with the full run.
+
+#### Step 5c — Full training run (after the user agrees)
+
+Use `--hpo_iter 100 --hpo_patience 30` for the real run. The `--hpo_patience` flag stops early if the Bayesian optimiser stops improving, so in practice it often finishes faster than 100 iterations.
 
 **Classification — tumor subtype:**
 ```bash
@@ -348,7 +368,8 @@ flexynesis \
   --model_class DirectPred \
   --target_variables HISTOLOGICAL_DIAGNOSIS \
   --data_types mut,cna \
-  --hpo_iter 20 \
+  --hpo_iter 100 \
+  --hpo_patience 30 \
   --features_top_percentile 10 \
   --outdir results \
   --prefix lgg_subtype
@@ -362,7 +383,8 @@ flexynesis \
   --surv_event_var OS_STATUS \
   --surv_time_var OS_MONTHS \
   --data_types mut,cna \
-  --hpo_iter 20 \
+  --hpo_iter 100 \
+  --hpo_patience 30 \
   --features_top_percentile 10 \
   --outdir results \
   --prefix lgg_survival
@@ -375,7 +397,8 @@ flexynesis \
   --model_class DirectPred \
   --target_variables Erlotinib \
   --data_types gex,cnv \
-  --hpo_iter 20 \
+  --hpo_iter 100 \
+  --hpo_patience 30 \
   --features_top_percentile 10 \
   --log_transform True \
   --outdir results \
@@ -389,7 +412,8 @@ flexynesis \
   --model_class DirectPred \
   --target_variables y \
   --data_types gex,meth \
-  --hpo_iter 20 \
+  --hpo_iter 100 \
+  --hpo_patience 30 \
   --features_top_percentile 10 \
   --outdir results \
   --prefix msi_classification
@@ -401,13 +425,14 @@ flexynesis \
   --data_path singlecell_bonemarrow \
   --model_class supervised_vae \
   --data_types gex \
-  --hpo_iter 5 \
+  --hpo_iter 100 \
+  --hpo_patience 30 \
   --features_top_percentile 10 \
   --outdir results \
   --prefix bonemarrow_celltypes
 ```
 
-#### Step 5c — Multi-task training (only after single-task baseline works)
+#### Step 5d — Multi-task training (only after single-task baseline works)
 
 Multi-task is a key strength of flexynesis — the model learns shared representations and balances losses automatically. Suggest it **only** after the user has seen a working single-task result and wants to explore further.
 
@@ -420,7 +445,8 @@ flexynesis \
   --surv_event_var OS_STATUS \
   --surv_time_var OS_MONTHS \
   --data_types mut,cna \
-  --hpo_iter 20 \
+  --hpo_iter 100 \
+  --hpo_patience 30 \
   --features_top_percentile 10 \
   --outdir results \
   --prefix lgg_multitask
@@ -433,20 +459,21 @@ flexynesis \
   --model_class DirectPred \
   --target_variables CLAUDIN_SUBTYPE,CHEMOTHERAPY \
   --data_types gex,cna \
-  --hpo_iter 20 \
+  --hpo_iter 100 \
+  --hpo_patience 30 \
   --features_top_percentile 10 \
   --outdir results \
   --prefix brca_multitask
 ```
 
 **Useful flags:**
-- `--hpo_iter N` — Bayesian HPO steps (1 for smoke test, 20–50 for real runs, 100 default)
+- `--hpo_iter N` — Bayesian HPO steps (1 for smoke test, 100 for real runs)
+- `--hpo_patience N` — stop HPO early after N non-improving steps (use 30 for real runs)
 - `--features_top_percentile P` — keep top P% by Laplacian score (try 5–15 for large datasets)
 - `--use_gpu` — enable CUDA GPU; `--device mps` for Apple Silicon
 - `--evaluate_baseline_performance` — also run RF, SVM, XGBoost, RSF baselines
 - `--covariates col1,col2` — include clin.csv columns as extra input features
 - `--disable_marker_finding` — skip Captum importance scores (faster)
-- `--early_stop_patience N` — stop HPO after N non-improving steps (default 10)
 
 ---
 
@@ -558,7 +585,7 @@ print("Saved kaplan_meier.png")
 
 After showing the results, offer these options in order — simpler ones first:
 
-- **More HPO**: increase `--hpo_iter` to 50–100 for better hyperparameter tuning on the same single task
+- **More HPO**: increase `--hpo_iter` to 100 with `--hpo_patience 30` for better hyperparameter tuning on the same single task (if not already done)
 - **Add baselines**: append `--evaluate_baseline_performance` to compare DirectPred against RF/SVM/XGBoost/RSF
 - **Try another model**: swap `--model_class` to `supervised_vae` or `MultiTripletNetwork` for richer embeddings or better cluster separation
 - **Add a second task (multi-task)**: only after the single-task baseline looks good — combine with a second well-scoring variable from the EDA
