@@ -14,9 +14,18 @@ At every step: run the commands, inspect the output, summarise what you found in
 
 ## Onboarding Workflow
 
-### Step 1 — Install flexynesis
+### Step 1 — Introduce flexynesis and check installation
 
-**Do not check automatically.** Ask the user: *"Do you already have flexynesis installed in a mamba or conda environment?"*
+**Before asking about installation, give the user a short orientation.** Say something like:
+
+> "flexynesis is a deep learning framework for multi-omics data integration. It trains neural networks that jointly encode multiple omics layers (e.g. gene expression, mutations, methylation) and predict clinical outcomes — classification, regression, or survival — from a single command. It handles feature selection, hyperparameter optimisation, and model interpretation automatically.
+>
+> Key links:
+> - GitHub: https://github.com/BIMSBbioinfo/flexynesis
+> - Paper: Uyar et al., *Nature Communications* 2025 — https://doi.org/10.1038/s41467-025-63688-5
+> - Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis-benchmark-datasets/dashboard.html"
+
+Then ask: *"Do you already have flexynesis installed in a mamba or conda environment?"*
 
 - If yes: ask for the environment name and activate it before proceeding.
 - If no: create a clean environment and install:
@@ -374,7 +383,13 @@ Explain each output file in plain language as you show it:
 - `feature_importance.IntegratedGradients.csv` — which genes drove predictions; cross-referencing against known biology (e.g. IDH1 for glioma survival) is a sanity check that the model is learning real signal and not noise.
 - `predicted_labels.csv` — the actual predictions on the test set; for survival, splitting by median risk score into a Kaplan-Meier plot shows whether the model meaningfully stratifies patients.
 
-After walking through all outputs, tell the user explicitly:
+After walking through all outputs, **first offer the user a notebook** before suggesting the full run:
+
+> "Would you like me to save a Jupyter notebook summarising what we've done so far? It will include the dataset setup, the smoke test command, the output stats, and the plots — with short notes at each step so you can re-run or share it."
+
+If yes, write the notebook now (see Step 7 for format). If no, proceed.
+
+Then tell the user explicitly:
 
 > "This smoke test used only 1 HPO iteration — it found a single hyperparameter configuration essentially at random. The result is a lower bound on what the model can do. To get the best performance, we need to run Bayesian hyperparameter optimisation properly. I recommend `--hpo_iter 100` with `--hpo_patience 30` (stop early if no improvement for 30 steps). This will take longer — typically 20–60 minutes on CPU depending on dataset size — but will find a substantially better configuration."
 
