@@ -1,42 +1,73 @@
-# Flexynesis — Claude-Guided Quickstart
+# Flexynesis — AI-Guided Quickstart
 
-This repository contains a single `CLAUDE.md` file. When you open it with [Claude Code](https://claude.ai/code), Claude becomes an interactive guide that walks you from zero to a trained multi-omics deep learning model — without you reading any documentation or writing any code.
+This repository contains `CLAUDE.md` and `AGENTS.md` — instruction files that turn a supported AI coding assistant into an interactive guide. It walks you from zero to a trained multi-omics deep learning model, without reading any documentation or writing any code.
 
 **You only need:**
 - [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) (or conda / pip)
-- Claude Code CLI (free tier available)
+- [Claude Code](https://claude.ai/code) **or** [opencode](https://opencode.ai) (both have free tiers)
 
-Claude installs flexynesis, downloads a dataset, trains the model, and produces plots — all from a conversation.
+The AI installs flexynesis, downloads a dataset, trains the model, and produces plots — all from a conversation.
 
 ---
 
 ## Quickstart
 
-**1. Install Claude Code**
+```bash
+git clone https://github.com/BIMSBbioinfo/flexynesis-claude.git
+cd flexynesis-claude
+```
 
-See https://code.claude.com/docs/en/terminal-guide
+Then choose your AI assistant:
+
+---
+
+### Option A — Claude Code
+
+**1. Install Claude Code**
 
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash
 ```
 
-**2. Authorise Claude Code**
+**2. Authorise**
 
-After installation, run `claude` and follow the browser-based login prompt to authorise your account.
+Run `claude` once and follow the browser-based login prompt.
 
-**3. Clone this repository and start Claude**
+**3. Start the guided session**
 
 ```bash
-git clone https://github.com/BIMSBbioinfo/flexynesis-claude.git
-cd flexynesis-claude
 claude "let's get started with Flexynesis!"
 ```
 
-Claude reads `CLAUDE.md` and immediately begins the guided session.
+Claude reads `CLAUDE.md` and immediately begins.
 
 ---
 
-## What Claude will do
+### Option B — opencode
+
+**1. Install opencode**
+
+See https://opencode.ai for installation instructions.
+
+**2. Start opencode in this directory**
+
+```bash
+opencode
+```
+
+**3. Start the guided session**
+
+Once the opencode prompt is open, type:
+
+```
+let's get started with Flexynesis!
+```
+
+opencode reads `AGENTS.md` and begins the same guided workflow.
+
+---
+
+## What the AI guide will do
 
 | Step | What happens |
 |---|---|
@@ -48,13 +79,13 @@ Claude reads `CLAUDE.md` and immediately begins the guided session.
 | 6 | Runs training with hyperparameter optimisation |
 | 7 | Reads the output files and generates PCA plots, feature importance charts, Kaplan-Meier curves, and a performance table |
 
-You make the choices; Claude does the typing.
+You make the choices; the AI does the typing.
 
 ---
 
 ## Available datasets
 
-Claude can download any of these ready-to-use benchmark datasets or fetch any study directly from cBioPortal.
+The AI guide can download any of these ready-to-use benchmark datasets or fetch any study directly from cBioPortal.
 
 | Dataset | Biology | What you can predict |
 |---|---|---|
@@ -70,7 +101,8 @@ Claude can download any of these ready-to-use benchmark datasets or fetch any st
 ## Example session
 
 ```
-$ claude
+$ claude "let's get started with Flexynesis!"
+# or: opencode → "let's get started with Flexynesis!"
 
 I see you've opened this repository. Let me get you started with flexynesis.
 
