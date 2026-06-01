@@ -23,7 +23,7 @@ At every step: run the commands, inspect the output, summarise what you found in
 > Key links:
 > - GitHub: https://github.com/BIMSBbioinfo/flexynesis
 > - Paper: Uyar et al., *Nature Communications* 2025 — https://doi.org/10.1038/s41467-025-63688-5
-> - Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis-benchmark-datasets/dashboard.html"
+> - Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/getting_started/"
 
 Then ask: *"Do you already have flexynesis installed in a mamba or conda environment?"*
 

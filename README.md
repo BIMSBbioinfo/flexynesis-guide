@@ -174,7 +174,7 @@ What next?
 
 Flexynesis is a deep learning toolkit for multi-omics data integration and clinical outcome prediction. It supports fully connected networks, variational autoencoders, graph convolutional networks, and triplet-loss models, with automated feature selection, hyperparameter optimisation, and integrated-gradient marker discovery.
 
-- Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/
+- Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/getting_started/
 - Benchmark results: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis-benchmark-datasets/dashboard.html
 - Source code: https://github.com/BIMSBbioinfo/flexynesis
 - Paper: Uyar et al., *Nature Communications* 2025. https://doi.org/10.1038/s41467-025-63688-5
