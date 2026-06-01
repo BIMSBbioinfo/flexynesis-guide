@@ -13,8 +13,8 @@ The AI installs flexynesis, downloads a dataset, trains the model, and produces 
 ## Quickstart
 
 ```bash
-git clone https://github.com/BIMSBbioinfo/flexynesis-claude.git
-cd flexynesis-claude
+git clone https://github.com/BIMSBbioinfo/flexynesis-guide.git
+cd flexynesis-guide
 ```
 
 Then choose your AI assistant:
