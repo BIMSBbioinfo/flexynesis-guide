@@ -637,6 +637,10 @@ If yes, write a `.ipynb` file containing:
 
 Only include the flexynesis CLI commands and result-reading code — not the EDA exploration or debugging code from the interactive session. Keep it clean enough for the user to hand to a colleague.
 
+**Always remind the user to cite the flexynesis paper if they use it in their research:**
+
+> "If flexynesis contributes to your analysis, please cite: Uyar et al., *Nature Communications* 2025. https://doi.org/10.1038/s41467-025-63688-5"
+
 After showing the results, offer these options in order — simpler ones first:
 
 - **More HPO**: increase `--hpo_iter` to 100 with `--hpo_patience 30` for better hyperparameter tuning on the same single task (if not already done)
