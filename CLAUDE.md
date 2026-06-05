@@ -131,8 +131,10 @@ Download and extract:
 ```bash
 curl -L -o <key>.tgz \
   https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis-benchmark-datasets/<key>.tgz
-tar -xzvf <key>.tgz
+tar -xzvf <key>.tgz && echo "Extraction complete" && ls <key>/
 ```
+
+**Important:** Never pipe `tar` through `head` or any other command — doing so kills the tar process before extraction finishes and silently leaves the directory incomplete. Always let `tar` run to completion, then inspect the result separately. Verify the expected `train/` and `test/` subdirectories exist before proceeding.
 
 #### Option B — Fetch any study from cBioPortal
 
@@ -431,6 +433,15 @@ flexynesis \
   --outdir results \
   --prefix smoke_test
 ```
+
+**While the smoke test is running, narrate what flexynesis is doing at each stage** — don't just show a spinner. Tell the user:
+
+1. **Data loading** — flexynesis reads each modality CSV and the clinical file, then intersects sample IDs across all files. Any sample missing from even one modality is silently dropped here.
+2. **Feature selection** — Laplacian scores are computed for every feature in every modality. Only the top `--features_top_percentile` percent (5% in the smoke test) are kept. This reduces noise and speeds up training.
+3. **HPO (1 iteration)** — Bayesian optimisation draws one set of hyperparameters (latent dim, hidden dim factor, learning rate, batch size) essentially at random for the smoke test. In a full run with `--hpo_iter 100` it would search intelligently across 100 configurations.
+4. **Model training** — the chosen hyperparameters are used to train the neural network on the train split. Each omics modality gets its own encoder; the latent vectors are concatenated and passed to a prediction head for the target variable.
+5. **Evaluation** — the trained model predicts on the held-out test set. Metrics (AUROC, C-index, Pearson r, etc.) are written to `stats.csv`.
+6. **Marker discovery** — Integrated Gradients (and optionally GradientShap) are computed for every test sample to assign an importance score to each feature. This is the most compute-intensive step; use `--disable_marker_finding` to skip it if speed matters.
 
 #### Step 5b — Walk through the smoke test outputs before full training
 
