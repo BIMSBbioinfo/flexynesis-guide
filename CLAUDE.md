@@ -434,7 +434,7 @@ flexynesis \
   --prefix smoke_test
 ```
 
-**While the smoke test is running, narrate what flexynesis is doing at each stage** — don't just show a spinner. Tell the user:
+**Before launching the smoke test, explain to the user what flexynesis will do at each stage** so they know what to expect while it runs:
 
 1. **Data loading** — flexynesis reads each modality CSV and the clinical file, then intersects sample IDs across all files. Any sample missing from even one modality is silently dropped here.
 2. **Feature selection** — Laplacian scores are computed for every feature in every modality. Only the top `--features_top_percentile` percent (5% in the smoke test) are kept. This reduces noise and speeds up training.
