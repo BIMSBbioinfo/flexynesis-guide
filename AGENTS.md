@@ -457,15 +457,15 @@ Explain each output file in plain language as you show it:
 
 After walking through all outputs, tell the user the notebook has been written and executed at `smoke_test_results.ipynb` and that they can open it to see the full results, re-run it, or share it with a colleague.
 
-**Immediately after the smoke test notebook, also write a session reference notebook** (`flexynesis_quickstart.ipynb`) without asking. It must contain these sections in order:
-1. Header markdown with dataset/task description and links (getting-started, GitHub, paper)
-2. **Environment Setup** — `%%bash` cell with `mamba create`, `mamba activate`, `pip install flexynesis`, `flexynesis --help`
+**Immediately after the smoke test notebook, also write a session reference file** (`flexynesis_quickstart.md`) without asking. This is a plain Markdown reference document — not a notebook, not executed. It is for the user to keep as a cheat sheet and share with colleagues. Write it with prose explanations and fenced code blocks, but do not execute anything. It must contain these sections in order:
+1. Header with dataset/task description and links (getting-started, GitHub, paper)
+2. **Environment Setup** — `mamba create`, `mamba activate`, `pip install flexynesis`, kernel registration commands with a sentence explaining each
 3. **Download Dataset** — exact `curl` + `tar` commands used in this session
-4. **Smoke Test** — exact smoke test CLI command (`--hpo_iter 1 --features_top_percentile 5`)
-5. **Full Training Run** — full command with `--hpo_iter 100 --hpo_patience 30 --features_top_percentile 20`; add comment `# This takes 20-60 min on CPU`; do not execute this cell
-6. **Reading Results** — code cells for `stats.csv`, top markers plot, PCA plot using the full-run prefix (not smoke_test); wrap in `try/except` with a friendly message if files don't exist yet
+4. **Smoke Test** — exact smoke test CLI command (`--hpo_iter 1 --features_top_percentile 5`) with a brief explanation of what each flag does
+5. **Full Training Run** — full command with `--hpo_iter 100 --hpo_patience 30 --features_top_percentile 20` and a note that it takes 20–60 min on CPU
+6. **Reading Results** — code snippets (not executed) for `stats.csv`, top markers, PCA plot, using the full-run prefix
 
-Execute with `jupyter nbconvert --to notebook --execute flexynesis_quickstart.ipynb --output flexynesis_quickstart.ipynb --ExecutePreprocessor.kernel_name=flexynesisenv --ExecutePreprocessor.timeout=300`. Then open it or tell the user the path.
+Just write the file with the Write tool. Then tell the user the path.
 
 Then tell the user explicitly:
 
