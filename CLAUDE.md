@@ -10,6 +10,8 @@ You are the interactive entry point for flexynesis. The user has no flexynesis i
 
 At every step: run the commands, inspect the output, summarise what you found in plain language, and offer the user concrete choices. The user only makes decisions; you do the work.
 
+**Teaching principle — apply at every major step:** Before executing any action, explain (1) *why* this step is necessary, (2) *what correct output looks like*, and (3) *what could go wrong* if skipped. Keep explanations to 3–6 sentences in plain language before running any code.
+
 ---
 
 ## Onboarding Workflow
@@ -42,6 +44,66 @@ Confirm the CLI works:
 flexynesis --help
 ```
 
+**Register a Jupyter kernel for the environment.** All notebooks in this session are executed via `jupyter nbconvert` and need a kernel that points to the flexynesis Python installation. `ipykernel` ships with flexynesis, so register it immediately after confirming the CLI works:
+
+```bash
+python -m ipykernel install --user --name flexynesisenv --display-name "Python (flexynesisenv)"
+```
+
+Verify it appears in the kernel list:
+
+```bash
+jupyter kernelspec list
+```
+
+Then pass `--ExecutePreprocessor.kernel_name=flexynesisenv` to every `jupyter nbconvert` command in this session. If the environment name is different (user provided their own), substitute accordingly.
+
+Once confirmed, give the user a brief orientation on how flexynesis expects its input data to be organised. Say something like the following — use plain language, show the small examples literally in the chat:
+
+---
+
+**How flexynesis input data is organised**
+
+flexynesis expects a root folder with two subfolders — `train/` and `test/` — each containing the same set of CSV files:
+
+```
+my_dataset/
+├── train/
+│   ├── clin.csv      ← clinical / outcome variables (one row per sample)
+│   ├── gex.csv       ← gene expression (one row per gene, one column per sample)
+│   └── mut.csv       ← mutations (one row per gene, one column per sample)
+└── test/
+    ├── clin.csv
+    ├── gex.csv
+    └── mut.csv
+```
+
+**Important:** `gex` and `mut` are just example names — flexynesis does not know or care what the files are called. Any number of numeric data tables can be used: gene expression, mutations, copy number, methylation, proteomics, ATAC-seq peaks, metabolomics, or anything else you can put in a feature × sample matrix. The filenames (without `.csv`) become the modality names you pass to `--data_types`. You can have one modality or ten — the structure is the same.
+
+The modality files (everything except `clin.csv`) are **feature × sample** matrices — features are rows, samples are columns:
+
+```
+         TCGA-01  TCGA-02  TCGA-03
+TP53        1        0        1
+IDH1        0        1        1
+EGFR        1        0        0
+```
+
+The clinical file (`clin.csv`) is the opposite orientation — **sample × variable** — with sample IDs as the row index:
+
+```
+          HISTOLOGICAL_DIAGNOSIS   AGE   OS_STATUS   OS_MONTHS
+TCGA-01         glioblastoma       55       1          5.7
+TCGA-02         astrocytoma        33       0         10.5
+TCGA-03         oligodendroglioma  41       1         22.0
+```
+
+The names of the modality files (without `.csv`) are what you pass to `--data_types`. For example, if you have `gex.csv` and `mut.csv`, you pass `--data_types gex,mut`. If you also had `meth.csv` and `prot.csv`, you would pass `--data_types gex,mut,meth,prot`.
+
+**The critical constraint:** sample IDs (column headers in omics files, row index in `clin.csv`) must match exactly across all files. Any sample missing from even one file is silently dropped. This is the most common source of data loss in custom datasets and we will check for it explicitly during the EDA step.
+
+For the benchmark datasets we are about to use, all of this is already taken care of — they are ready to train on as downloaded.
+
 ---
 
 ### Step 2 — Choose a Dataset
@@ -59,10 +121,10 @@ Download one of these ready-to-use datasets. All are hosted at `https://bimsbsta
 | `dataset1` | Cancer drug response (CCLE/GDSC cell lines) | `gex`, `cnv` | ~950 / 240 | Regression (drug IC50 per compound) |
 | `dataset2` | Microsatellite instability (MSI) | `gex`, `meth` | ~380 / 95 | Binary classification (MSI-H vs MSS) |
 | `lgggbm_tcga_pub_processed` | Brain tumours: LGG + GBM (TCGA) | `mut`, `cna` | 556 / 238 | Classification, survival, regression |
-| `brca_metabric` | Breast cancer (METABRIC) | `gex`, `cna` | ~1390 / 595 | Classification, survival, regression |
+| `brca_metabric_processed` | Breast cancer (METABRIC) | `gex`, `cna` | ~1390 / 595 | Classification, survival, regression |
 | `singlecell_bonemarrow` | Bone marrow single-cell RNA | `gex` | ~7500 / 2500 | Classification, unsupervised |
 
-**Note on single-cell data:** flexynesis was designed for bulk multi-omics data (patient cohorts, cell lines) — not single-cell RNA-seq. It has no built-in handling for the sparsity, scale, or batch structure typical of scRNA-seq. The `singlecell_bonemarrow` dataset is included as a benchmark curiosity and works well for **supervised cell type classification** (where cell type labels are available), but flexynesis is not the right tool for unsupervised single-cell analysis, trajectory inference, or integration of large scRNA-seq atlases. For those tasks, use Scanpy/Seurat/scVI instead. If the user's question is specifically about supervised classification of single-cell data with known labels, it is worth trying.
+**Note on single-cell data:** flexynesis was designed for bulk multi-omics data, not scRNA-seq. The `singlecell_bonemarrow` dataset works for **supervised cell type classification** with known labels, but is not appropriate for unsupervised analysis, trajectory inference, or large atlas integration — use Scanpy/Seurat/scVI for those tasks.
 
 Download and extract:
 
@@ -74,7 +136,7 @@ tar -xzvf <key>.tgz
 
 #### Option B — Fetch any study from cBioPortal
 
-**Important:** Any custom dataset — whether from cBioPortal or elsewhere — requires some preparation before it is ready to train. flexynesis handles label encoding and much of the internal data cleanup automatically. However, the one thing you must ensure manually is that **sample IDs are consistent across all omics CSV files and `clin.csv`** — mismatched IDs will silently drop samples or cause errors. Additionally, if a clinical variable has rare labels with very few samples, consider combining them into an `"Other"` category before training; flexynesis won't do this automatically. Walk through these issues as they arise — do not assume the raw download is usable. This path is more involved than Option A; only recommend it if the user has a specific question that the benchmark datasets don't cover.
+**Important:** Custom datasets require preparation. Ensure **sample IDs are consistent across all omics files and `clin.csv`** — mismatches silently drop samples. Combine rare labels into `"Other"` before training. Do not assume the raw download is usable. Only recommend this path when benchmark datasets don't cover the user's question.
 
 If the user wants a different cancer type, help them pick a study from https://www.cbioportal.org.
 Well-curated studies with rich multi-omic data:
@@ -154,55 +216,44 @@ import os, pandas as pd
 from functools import reduce
 
 DATASET = '<dataset_key>'
-SPLIT = 'train'
-data_dir = f'{DATASET}/{SPLIT}'
+data_dir = f'{DATASET}/train'
 
-# List all modality files (everything except clin.csv)
 mod_files = sorted([f for f in os.listdir(data_dir) if f.endswith('.csv') and f != 'clin.csv'])
 print(f"Modality files found: {[f.replace('.csv','') for f in mod_files]}")
 
-# Load clinical — index is the sample ID
 clin = pd.read_csv(f'{data_dir}/clin.csv', index_col=0)
 print(f"\nClinical: {clin.shape[0]} samples × {clin.shape[1]} variables")
 clin_samples = set(clin.index)
 
-# Load each modality — flexynesis format: rows=features, columns=samples
 modality_samples = {}
 for f in mod_files:
     key = f.replace('.csv', '')
     df = pd.read_csv(f'{data_dir}/{f}', index_col=0)
-    # detect orientation: samples are whichever axis overlaps more with clin index
     col_overlap = len(set(df.columns) & clin_samples)
     row_overlap = len(set(df.index) & clin_samples)
     if col_overlap >= row_overlap:
-        samples = set(df.columns)
-        n_feat = df.shape[0]
+        samples = set(df.columns); n_feat = df.shape[0]
     else:
-        samples = set(df.index)
-        n_feat = df.shape[1]
-    in_clin = len(samples & clin_samples)
+        samples = set(df.index); n_feat = df.shape[1]
     modality_samples[key] = samples
-    print(f"  {key}: {n_feat} features, {len(samples)} samples total, {in_clin} overlap with clin")
+    print(f"  {key}: {n_feat} features, {len(samples)} samples, {len(samples & clin_samples)} overlap with clin")
 
-# Common samples across ALL modalities + clin
-all_sets = [clin_samples] + list(modality_samples.values())
-common = reduce(lambda a, b: a & b, all_sets)
+common = reduce(lambda a, b: a & b, [clin_samples] + list(modality_samples.values()))
 print(f"\nSamples present in ALL modalities + clin: {len(common)}")
 
-# Pairwise overlaps
 keys = list(modality_samples.keys())
-print("\nPairwise sample overlaps (with clin):")
+print("\nPairwise overlaps (with clin):")
 for k in keys:
-    n = len(modality_samples[k] & clin_samples)
-    print(f"  clin ∩ {k}: {n}")
+    print(f"  clin ∩ {k}: {len(modality_samples[k] & clin_samples)}")
 if len(keys) >= 2:
     for i in range(len(keys)):
         for j in range(i+1, len(keys)):
-            n = len(modality_samples[keys[i]] & modality_samples[keys[j]] & clin_samples)
-            print(f"  clin ∩ {keys[i]} ∩ {keys[j]}: {n}")
+            print(f"  clin ∩ {keys[i]} ∩ {keys[j]}: {len(modality_samples[keys[i]] & modality_samples[keys[j]] & clin_samples)}")
 ```
 
 Summarise the output in plain language: which modalities are available, how many samples are covered by each, and how many are shared across all of them.
+
+**Write results to a Jupyter notebook instead of printing PNGs.** After running the modality inventory code, write the results into an `eda.ipynb` notebook (see notebook format below) and execute it with `jupyter nbconvert --to notebook --execute eda.ipynb --output eda.ipynb --ExecutePreprocessor.kernel_name=flexynesisenv --ExecutePreprocessor.timeout=120`. Then tell the user: *"EDA notebook written — open `eda.ipynb` to see the results."* If `xdg-open` is available, also run `xdg-open eda.ipynb` to launch it automatically.
 
 **After the modality inventory, ask the user which data types to use for training.** Present the options clearly with a recommendation:
 - Recommend modalities with ≥ 80% sample overlap with clin as safe to include.
@@ -314,6 +365,14 @@ df_rec = pd.DataFrame(recommendations)
 print(df_rec[['variable', 'task', 'detail', 'recommendation']].to_string(index=False))
 ```
 
+Add both the modality inventory code and the clinical variable scoring code as cells in `eda.ipynb`, with short markdown cells explaining each section. Execute the notebook with:
+
+```bash
+jupyter nbconvert --to notebook --execute eda.ipynb --output eda.ipynb --ExecutePreprocessor.kernel_name=flexynesisenv --ExecutePreprocessor.timeout=120
+```
+
+Then open it: run `xdg-open eda.ipynb` if available, otherwise tell the user the path.
+
 After running this, present the output as a clean table and explicitly tell the user:
 - Which variables are **recommended** (mark GOOD ones)
 - Which are **skipped** and exactly why (e.g., "SEX is 85% Female in this breast cancer dataset — a model would just predict Female and achieve high accuracy without learning anything")
@@ -377,7 +436,7 @@ flexynesis \
 
 **Do not immediately launch a longer training run after the smoke test.** Instead, use the smoke test results to show the user what flexynesis produces and what the outputs mean. This builds understanding and confirms the run made sense before investing more time.
 
-Produce all plots that are relevant to the task (see Step 6 for the code). For survival tasks, generate all three: performance metrics, PCA of embeddings, top markers, and the Kaplan-Meier curve. For classification, generate metrics, PCA, and top markers. For regression, generate metrics and top markers.
+Write all visualisations into a Jupyter notebook (`smoke_test_results.ipynb`) and execute it immediately with `jupyter nbconvert --to notebook --execute smoke_test_results.ipynb --output smoke_test_results.ipynb --ExecutePreprocessor.kernel_name=flexynesisenv --ExecutePreprocessor.timeout=300`. Include plots relevant to the task — for classification: metrics table, PCA of embeddings, top markers; for survival: those three plus a Kaplan-Meier curve; for regression: metrics and top markers. Then open it: run `xdg-open smoke_test_results.ipynb` if available, otherwise tell the user the path.
 
 Explain each output file in plain language as you show it:
 - `stats.csv` — the headline metric (C-index for survival, AUROC for classification, Pearson r for regression). Explain what the number means and whether it looks reasonable for a 1-iteration smoke test.
@@ -385,11 +444,17 @@ Explain each output file in plain language as you show it:
 - `feature_importance.IntegratedGradients.csv` — which genes drove predictions; cross-referencing against known biology (e.g. IDH1 for glioma survival) is a sanity check that the model is learning real signal and not noise.
 - `predicted_labels.csv` — the actual predictions on the test set; for survival, splitting by median risk score into a Kaplan-Meier plot shows whether the model meaningfully stratifies patients.
 
-After walking through all outputs, **first offer the user a notebook** before suggesting the full run:
+After walking through all outputs, tell the user the notebook has been written and executed at `smoke_test_results.ipynb` and that they can open it to see the full results, re-run it, or share it with a colleague.
 
-> "Would you like me to save a Jupyter notebook summarising what we've done so far? It will include the dataset setup, the smoke test command, the output stats, and the plots — with short notes at each step so you can re-run or share it."
+**Immediately after the smoke test notebook, also write a session reference notebook** (`flexynesis_quickstart.ipynb`) without asking. It must contain these sections in order:
+1. Header markdown with dataset/task description and links (getting-started, GitHub, paper)
+2. **Environment Setup** — `%%bash` cell with `mamba create`, `mamba activate`, `pip install flexynesis`, `flexynesis --help`
+3. **Download Dataset** — exact `curl` + `tar` commands used in this session
+4. **Smoke Test** — exact smoke test CLI command (`--hpo_iter 1 --features_top_percentile 5`)
+5. **Full Training Run** — full command with `--hpo_iter 100 --hpo_patience 30 --features_top_percentile 20`; add comment `# This takes 20-60 min on CPU`; do not execute this cell
+6. **Reading Results** — code cells for `stats.csv`, top markers plot, PCA plot using the full-run prefix (not smoke_test); wrap in `try/except` with a friendly message if files don't exist yet
 
-If yes, write the notebook now (see Step 7 for format). If no, proceed.
+Execute with `jupyter nbconvert --to notebook --execute flexynesis_quickstart.ipynb --output flexynesis_quickstart.ipynb --ExecutePreprocessor.kernel_name=flexynesisenv --ExecutePreprocessor.timeout=300`. Then open it or tell the user the path.
 
 Then tell the user explicitly:
 
@@ -403,75 +468,38 @@ Use `--hpo_iter 100 --hpo_patience 30` for the real run. The `--hpo_patience` fl
 
 **Feature selection for full runs:** Use `--features_top_percentile 20` (top 20% by Laplacian score) with `--features_min 1000` to ensure at least 1000 features per modality are retained. The smoke test uses 5% to keep it fast; the full run benefits from a broader feature set. Adjust downward (e.g. 10%) for very large datasets (>50k features per modality) if memory or runtime is a concern.
 
-**Classification — tumor subtype:**
+**Classification:**
 ```bash
 flexynesis \
   --data_path lgggbm_tcga_pub_processed \
   --model_class DirectPred \
   --target_variables HISTOLOGICAL_DIAGNOSIS \
   --data_types mut,cna \
-  --hpo_iter 100 \
-  --hpo_patience 30 \
-  --features_top_percentile 10 \
-  --outdir results \
-  --prefix lgg_subtype
+  --hpo_iter 100 --hpo_patience 30 --features_top_percentile 10 \
+  --outdir results --prefix lgg_subtype
 ```
 
-**Survival analysis:**
+**Survival:**
 ```bash
 flexynesis \
   --data_path lgggbm_tcga_pub_processed \
   --model_class DirectPred \
-  --surv_event_var OS_STATUS \
-  --surv_time_var OS_MONTHS \
+  --surv_event_var OS_STATUS --surv_time_var OS_MONTHS \
   --data_types mut,cna \
-  --hpo_iter 100 \
-  --hpo_patience 30 \
-  --features_top_percentile 10 \
-  --outdir results \
-  --prefix lgg_survival
+  --hpo_iter 100 --hpo_patience 30 --features_top_percentile 10 \
+  --outdir results --prefix lgg_survival
 ```
 
-**Drug response regression (single drug first):**
+**Regression (drug response):**
 ```bash
 flexynesis \
   --data_path dataset1 \
   --model_class DirectPred \
   --target_variables Erlotinib \
   --data_types gex,cnv \
-  --hpo_iter 100 \
-  --hpo_patience 30 \
-  --features_top_percentile 10 \
+  --hpo_iter 100 --hpo_patience 30 --features_top_percentile 10 \
   --log_transform True \
-  --outdir results \
-  --prefix erlotinib_response
-```
-
-**Binary classification (MSI):**
-```bash
-flexynesis \
-  --data_path dataset2 \
-  --model_class DirectPred \
-  --target_variables y \
-  --data_types gex,meth \
-  --hpo_iter 100 \
-  --hpo_patience 30 \
-  --features_top_percentile 10 \
-  --outdir results \
-  --prefix msi_classification
-```
-
-**Cell type classification (single-cell):**
-```bash
-flexynesis \
-  --data_path singlecell_bonemarrow \
-  --model_class supervised_vae \
-  --data_types gex \
-  --hpo_iter 100 \
-  --hpo_patience 30 \
-  --features_top_percentile 10 \
-  --outdir results \
-  --prefix bonemarrow_celltypes
+  --outdir results --prefix erlotinib_response
 ```
 
 #### Step 5d — Multi-task training (only after single-task baseline works)
@@ -497,7 +525,7 @@ flexynesis \
 **Multi-task with regression (breast cancer):**
 ```bash
 flexynesis \
-  --data_path brca_metabric \
+  --data_path brca_metabric_processed \
   --model_class DirectPred \
   --target_variables CLAUDIN_SUBTYPE,CHEMOTHERAPY \
   --data_types gex,cna \
@@ -536,6 +564,8 @@ Metric guide:
 - **Regression**: `pearson_r`, `R2`, `MSE`
 - **Survival**: `c_index` — above 0.6 is meaningful, above 0.7 is strong
 
+**All visualisations in Step 6 should be written as cells in a Jupyter notebook and rendered inline (no `plt.savefig` needed — `plt.show()` is enough). Execute the notebook with `jupyter nbconvert --to notebook --execute --ExecutePreprocessor.kernel_name=flexynesisenv` and open it for the user.**
+
 #### PCA of sample embeddings
 
 ```python
@@ -559,8 +589,7 @@ for lbl in labels.dropna().unique():
 ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
 ax.legend(bbox_to_anchor=(1.05, 1), fontsize=8)
 plt.tight_layout()
-plt.savefig('pca_embeddings.png', dpi=150)
-print("Saved pca_embeddings.png")
+plt.show()
 ```
 
 #### Top markers (feature importance)
@@ -568,25 +597,20 @@ print("Saved pca_embeddings.png")
 The importance file is long-format: columns are `target_class`, `target_class_label`, `layer`, `name`, `importance`, `explainer`; the index is the target variable name.
 
 ```python
-import pandas as pd, matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import pandas as pd, matplotlib.pyplot as plt
 
 prefix = 'results/<prefix>'
 imp = pd.read_csv(f'{prefix}.feature_importance.IntegratedGradients.csv', index_col=0)
 
 for var in imp.index.unique():
     df = imp.loc[var]
-    # Average absolute importance across classes per gene
     top = df.groupby('name')['importance'].apply(lambda x: x.abs().mean()).nlargest(20).sort_values()
     fig, ax = plt.subplots(figsize=(6, 6))
     top.plot.barh(ax=ax, color='steelblue')
     ax.set_title(f'Top 20 markers — {var}')
     ax.set_xlabel('Mean |Integrated Gradient| score')
     plt.tight_layout()
-    fname = f'top_markers_{var.replace("/","_")}.png'
-    plt.savefig(fname, dpi=150)
-    print(f"Saved {fname}")
+    plt.show()
 ```
 
 Known markers rediscovered by flexynesis in published benchmarks:
@@ -617,25 +641,14 @@ for group, g in df.groupby('risk_group'):
     kmf.plot_survival_function(ax=ax)
 ax.set_title('Kaplan-Meier: predicted risk groups')
 plt.tight_layout()
-plt.savefig('kaplan_meier.png', dpi=150)
-print("Saved kaplan_meier.png")
+plt.show()
 ```
 
 ---
 
 ### Step 7 — What Next?
 
-After showing the results, **always ask the user** whether they would like a notebook report of the session:
-
-> "Would you like me to save a Jupyter notebook summarising what we did? It will include the key flexynesis commands, the output stats, and the plots — with short text notes at each step so you can re-run or share it."
-
-If yes, write a `.ipynb` file containing:
-- A markdown cell introducing the dataset and task
-- Code cells for each step actually executed: data download + prep, smoke test command, full training command (if run), and all visualisation code
-- Short markdown cells between steps explaining what each step does and what the output means
-- The actual metric values from `stats.csv` summarised in a markdown cell
-
-Only include the flexynesis CLI commands and result-reading code — not the EDA exploration or debugging code from the interactive session. Keep it clean enough for the user to hand to a colleague.
+After the full training run completes, **automatically write a final summary notebook** (`flexynesis_session.ipynb`) without asking. Include: dataset/task intro, data download command, training command, and visualisation code (metrics, PCA, top markers, KM curve if survival) with short markdown explanations. Omit EDA and debugging code — keep it clean enough to hand to a colleague. Execute immediately with `jupyter nbconvert --to notebook --execute flexynesis_session.ipynb --output flexynesis_session.ipynb --ExecutePreprocessor.kernel_name=flexynesisenv --ExecutePreprocessor.timeout=300` and open it.
 
 **Always remind the user to cite the flexynesis paper if they use it in their research:**
 
@@ -683,8 +696,8 @@ flexynesis \
 | dataset1 (CCLE/GDSC) | Drug response regression | DirectPred | gex, cnv | Pearson r ≈ 0.4–0.7 per drug |
 | lgggbm_tcga_pub | Survival | DirectPred | mut, cna | C-index ≈ 0.70–0.75 |
 | lgggbm_tcga_pub | Tumour subtype classification | DirectPred | mut, cna | AUROC > 0.90 |
-| brca_metabric | CLAUDIN_SUBTYPE | DirectPred | gex, cna | Balanced accuracy ≈ 0.75–0.80 |
-| brca_metabric | CHEMOTHERAPY | supervised_vae | gex, cna | AUROC ≈ 0.70 |
+| brca_metabric_processed | CLAUDIN_SUBTYPE | DirectPred | gex, cna | Balanced accuracy ≈ 0.75–0.80 |
+| brca_metabric_processed | CHEMOTHERAPY | supervised_vae | gex, cna | AUROC ≈ 0.70 |
 | dataset2 (MSI) | MSI-H vs MSS | MultiTripletNetwork | gex, meth | AUROC > 0.90 |
 | singlecell_bonemarrow | Cell type classification | supervised_vae | gex | Balanced accuracy > 0.85 |
 
